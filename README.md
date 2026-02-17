@@ -1,6 +1,6 @@
 # CareOps: The AI-Powered Operating System for Service Businesses
 
-![Project Banner](<img width="1899" height="934" alt="image" src="https://github.com/user-attachments/assets/fef21ae0-1369-42af-a2f1-830cfa76435f" />) 
+<img width="1902" height="935" alt="image" src="https://github.com/user-attachments/assets/3030f852-badf-4e59-a86e-31fc0320ab29" />
 
 **CareOps** is an intelligent, all-in-one SaaS platform designed to replace the fragmented toolset (WhatsApp, Excel, Calendly) used by service businesses like clinics, auto shops, and salons. It unifies bookings, internal comms, and inventory into a single "Operating System" powered by **Google Gemini 1.5 Flash**.
 
