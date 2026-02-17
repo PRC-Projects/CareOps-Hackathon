@@ -1,0 +1,264 @@
+// prisma/schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// Enums ensure data consistency
+enum UserType {
+  OWNER
+  STAFF
+}
+
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+}
+
+enum MessageType {
+  EMAIL
+  SMS
+  SYSTEM_ALERT // For inventory warnings
+  TEXT
+}
+
+// 1. The Tenant (The Business)
+model Organization {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique // for custom URLs (e.g., careops.com/book/dentist-nyc)
+  email       String
+  phone       String?
+  address     String?
+  timezone    String   @default("UTC")
+  createdAt   DateTime @default(now())
+
+  // Relations
+  invites     Invite[]
+  users       User[]
+  services    Service[]
+  contacts    Contact[]
+  inventory   InventoryItem[]
+  bookings    Booking[]
+  conversations  Conversation[]
+  roles       Role[]
+  forms       Form[]
+
+}
+
+// 2. The Users (Owner & Staff)
+model User {
+  id             String       @id @default(cuid())
+  email          String       @unique
+  name           String?
+  
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  roleId         String?       
+  role           Role?         @relation(fields: [roleId], references: [id])
+
+  type           UserType      @default(STAFF)
+  
+  // Staff activity tracking
+  bookingsHandled Booking[]
+  conversations  Conversation[]
+}
+
+// 3. What they sell (Services)
+model Service {
+  id             String       @id @default(cuid())
+  name           String       @db.VarChar(255)
+  durationMin    Int          // e.g., 30, 60
+  price          Decimal      @default(0.00)
+  description    String?
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  bookings       Booking[]
+  
+  // Inventory usage per service (e.g., 1 Service uses 2 Masks)
+  requiredItems  ServiceResource[]
+  formId         String?
+  form           Form?         @relation(fields: [formId], references: [id])
+}
+
+// 4. Inventory (The Operations part)
+model InventoryItem {
+  id             String       @id @default(cuid())
+  name           String
+  quantity       Int          @default(0)
+  threshold      Int          @default(10) // Alert when below this
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  usedIn         ServiceResource[]
+}
+
+// Link Table: Service <-> Inventory
+model ServiceResource {
+  serviceId       String
+  inventoryItemId String
+  quantityUsed    Int      @default(1)
+
+  service         Service       @relation(fields: [serviceId], references: [id])
+  item            InventoryItem @relation(fields: [inventoryItemId], references: [id])
+
+  @@id([serviceId, inventoryItemId])
+}
+
+// 5. The Customer (CRM)
+model Contact {
+  id             String       @id @default(cuid())
+  name           String
+  email          String
+  phone          String?
+  notes          String?      @db.Text
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  bookings       Booking[]
+  conversations  Conversation[]
+}
+
+// 6. The Unified Inbox
+model Conversation {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  name      String?  @default("Direct Message") // e.g. "General", "Marketing"
+  isGroup   Boolean  @default(false)
+
+  // Link to Organization (So we know which business owns this chat)
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id])
+
+  // Optional: Keep this for future SMS integration, but make it optional now
+  contactId String?
+  contact   Contact? @relation(fields: [contactId], references: [id])
+
+  messages  Message[]
+  
+  // NEW: Which staff members are in this chat?
+  participants User[] 
+}
+
+model Message {
+  id             String       @id @default(cuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id])
+  content        String       @db.Text
+  type           MessageType
+  direction      String       // "INBOUND" (Customer) or "OUTBOUND" (Staff)
+  isRead         Boolean      @default(false)
+  createdAt      DateTime     @default(now())
+}
+
+// 7. The Booking (The Core Event)
+model Booking {
+  id             String        @id @default(cuid())
+  startTime      DateTime
+  endTime        DateTime
+  status         BookingStatus @default(PENDING)
+  
+  contactId      String
+  contact        Contact       @relation(fields: [contactId], references: [id])
+  
+  serviceId      String
+  service        Service       @relation(fields: [serviceId], references: [id])
+  
+  staffId        String?
+  staff          User?         @relation(fields: [staffId], references: [id])
+  
+  organizationId String
+  organization   Organization  @relation(fields: [organizationId], references: [id])
+
+  createdAt      DateTime      @default(now())
+
+  formSubmission FormSubmission?
+  notes          String? @db.Text
+}
+
+// 8. Staff Invitation
+model Invite {
+  id             String       @id @default(cuid())
+  email          String
+  
+  // 1. The Basic Level (Owner vs Staff)
+  type           UserType     @default(STAFF) 
+  
+  // 2. The Custom Role (Optional - e.g. "Senior Mechanic")
+  roleId         String?
+  role           Role?        @relation(fields: [roleId], references: [id])
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  
+  token          String       @unique
+  status         String       @default("PENDING")
+  createdAt      DateTime     @default(now())
+  
+  @@unique([email, organizationId])
+}
+
+// 9. Role
+model Role {
+  id             String        @id @default(cuid())
+  name           String        // e.g. "Senior Mechanic", "Front Desk"
+  permissions    String[]      // Store as array: ["VIEW_BOOKINGS", "MANAGE_INVENTORY"]
+  
+  organizationId String
+  organization   Organization  @relation(fields: [organizationId], references: [id])
+  
+  users          User[]
+  invites        Invite[]      // <--- ADD THIS LINE
+  
+  @@unique([name, organizationId])
+}
+
+
+// 10. Dynamic Forms
+model Form {
+  id             String        @id @default(cuid())
+  name           String        // e.g. "New Patient Intake"
+  description    String?
+  
+  // The structure is stored as JSON
+  // Example: [{ id: "q1", type: "text", label: "Car Model?" }, { id: "q2", type: "checkbox", label: "Needs Oil Change?" }]
+  fields         Json          
+  
+  organizationId String
+  organization   Organization  @relation(fields: [organizationId], references: [id])
+  
+  // Link to Services (A service can require a specific form)
+  services       Service[]
+  
+  submissions    FormSubmission[]
+  
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+}
+
+// 11. Form Submission
+model FormSubmission {
+  id             String        @id @default(cuid())
+  
+  formId         String
+  form           Form          @relation(fields: [formId], references: [id])
+  
+  bookingId      String        @unique // One submission per booking
+  booking        Booking       @relation(fields: [bookingId], references: [id])
+  
+  content        Json          
+  
+  createdAt      DateTime      @default(now())
+}
