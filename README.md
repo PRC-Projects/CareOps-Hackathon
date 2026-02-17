@@ -73,7 +73,7 @@ Tracks stock levels and uses AI to predict low-stock warnings based on service u
 
 1.  **Clone the repo**
     ```bash
-    git clone [https://github.com/your-username/careops-platform.git](https://github.com/your-username/careops-platform.git)
+    git clone https://github.com/your-username/careops-platform.git
     cd careops-platform
     ```
 
@@ -147,7 +147,3 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 ---
 
 *Built with ❤️ for the CareOps Hackathon 2026 organized by Humanity Founders*
-
-```
-
-```
